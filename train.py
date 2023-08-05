@@ -75,8 +75,7 @@ def main():
     parser.add_argument('--dataset', default='cifar10', type=str,
                         choices=['cifar10', 'cifar100'],
                         help='dataset name')
-    parser.add_argument('--num-labeled', type=int, default=4000,
-                        help='number of labeled data')
+    
     parser.add_argument("--expand-labels", action="store_true",
                         help="expand labels to fit eval steps")
     parser.add_argument('--arch', default='wideresnet', type=str,
@@ -125,6 +124,12 @@ def main():
                         help="don't use progress bar")
     parser.add_argument('--out', default='/data/hdd3/SemisupervisedLearning/fixmatch/results/',
                         help='directory to output the result')
+    # CIFAR 100
+    parser.add_argument('--labeled-ratio', type=float, default=0.4,
+                        help='number of labeled data')
+    # CIFAR 10 & SVHN
+    # parser.add_argument('--labeled-ratio', type=float, default=0.2,
+    #                     help='number of labeled data')
     parser.add_argument('--imbalanced-ratio',default=1,type=int)
     parser.add_argument('--unlabeled',default='all',type=str)
     parser.add_argument('--early-stop',default=10,type=int)
@@ -132,7 +137,7 @@ def main():
     global best_acc
     global early_stop_count
     early_stop_count = 0
-    args.out = args.out + f'fixmatch_{args.arch}_{args.num_labeled}_{args.unlabeled}_{args.imbalanced_ratio}_{args.seed}_early-stop_{args.early_stop}/'
+    args.out = args.out + f'fixmatch_{args.arch}_{args.labeled_ratio}_{args.unlabeled}_{args.imbalanced_ratio}_{args.seed}_early-stop_{args.early_stop}/'
     
     os.makedirs(args.out,exist_ok=True)
     streamHandler = logging.StreamHandler()
@@ -307,7 +312,7 @@ def main():
             output_device=args.local_rank, find_unused_parameters=True)
 
     logger.info("***** Running training *****")
-    logger.info(f"  Task = {args.dataset}@{args.num_labeled}")
+    logger.info(f"  Task = {args.dataset}@{args.labeled_ratio}_{args.imbalanced_ratio}")
     logger.info(f"  Num Epochs = {args.epochs}")
     logger.info(f"  Batch size per GPU = {args.batch_size}")
     logger.info(
@@ -325,6 +330,7 @@ def train(args, labeled_trainloader, unlabeled_trainloader, test_loader,
         from apex import amp
     global best_acc
     global early_stop_count
+    print(f'early_stop_count : {early_stop_count}')
     test_accs = []
     end = time.time()
 
@@ -477,12 +483,14 @@ def train(args, labeled_trainloader, unlabeled_trainloader, test_loader,
             logger.info(f'Early-Stopping : {early_stop_count} / {args.early_stop} ...')
         if early_stop_count >= args.early_stop:
             logger.info('Early-Stopped')
+            logger.info('Best top-1 acc: {:.2f}'.format(best_acc))
             break
     if args.local_rank in [-1, 0]:
         args.writer.close()
     logger.handlers.clear()
     logging.shutdown()
     if early_stop_count >= args.early_stop:
+        torch.distributed.destroy_process_group()
         return
 
 def test(args, test_loader, model, epoch):

@@ -91,7 +91,10 @@ def x_u_split(args, labels,unlabeled='all'):
         each_label_per_class = 5000
     else:
         each_label_per_class = 500
-    label_per_class = args.num_labeled // args.num_classes
+    
+    label_per_class = each_label_per_class * args.labeled_ratio
+    num_labeled = label_per_class * args.num_classes
+    print(f'num_labeled = {num_labeled}')
     class_distribution = make_longtailed_imb(max_num=label_per_class, class_num=args.num_classes, gamma=args.imbalanced_ratio)
     unlabeled_class_distribution = make_longtailed_imb(max_num=each_label_per_class, class_num=args.num_classes, gamma=args.imbalanced_ratio)
 
@@ -101,13 +104,13 @@ def x_u_split(args, labels,unlabeled='all'):
     unlabeled_idx = []
     # unlabeled data: all data (https://github.com/kekmodel/FixMatch-pytorch/issues/10)
     # print(f'=====class_distribution=====\n{class_distribution}')
-    if unlabeled == 'all':
+    if unlabeled == 'all': 
         for i in range(args.num_classes):
             idx = np.where(labels == i)[0]
             np.random.shuffle(idx)
             unlabeled_idx.extend(idx[:unlabeled_class_distribution[i]])
             labeled_idx.extend(idx[:class_distribution[i]])
-    else:
+    else: # ABC (unlabeled samples 또한 labeled samples과 같은 분포로)
         for i in range(args.num_classes):
             idx = np.where(labels == i)[0]
             np.random.shuffle(idx)
@@ -118,9 +121,9 @@ def x_u_split(args, labels,unlabeled='all'):
     # print(f'=====labeled_idx(before)=====\n{len(labeled_idx)}')
     
     # Check Here ! --> 65536개로 복사(label sample)
-    if args.expand_labels or args.num_labeled < args.batch_size:
+    if args.expand_labels or num_labeled < args.batch_size:
         num_expand_x = math.ceil( # 16 * 1024 / 100 => 
-            args.batch_size * args.eval_step / args.num_labeled)
+            args.batch_size * args.eval_step / num_labeled)
         labeled_idx = np.hstack([labeled_idx for _ in range(num_expand_x)])
     np.random.shuffle(labeled_idx)
     # print(f'=====labeled_idx(after)=====\n{len(labeled_idx)}')

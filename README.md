@@ -37,17 +37,23 @@ Train the model by 10000 labeled data of CIFAR-100 dataset by using DistributedD
 python -m torch.distributed.launch --nproc_per_node 4 --master_port=25677 ./train.py --dataset cifar100 --num-labeled 10000 --arch wideresnet --batch-size 16 --lr 0.03 --wdecay 0.001 --expand-labels --seed 5 --out results/cifar100@10000
 ```
 
+=========================================================================================
+
+## CIFAR-10-LT gamma = 100, beta = 20
 ```
-python -m torch.distributed.launch --nproc_per_node 4  ./train.py --dataset cifar100 --num-labeled 10000 --arch wideresnet --batch-size 16 --lr 0.03 --wdecay 0.001 --expand-labels --seed 5 --imbalanced-ratio 10
+python -m torch.distributed.launch --nproc_per_node 4  ./train.py --dataset cifar10 --labeled-ratio 0.2 --arch wideresnet --batch-size 16 --lr 0.03 --wdecay 0.001 --expand-labels --seed 5 --imbalanced-ratio 100
 ```
 
+## CIFAR-100-LT gamma = 20, beta = 40
+```
+python -m torch.distributed.launch --nproc_per_node 4 ./train.py --dataset cifar100 --labeled-ratio 0.4 --arch wideresnet --batch-size 16 --lr 0.03 --wdecay 0.001 --expand-labels --seed 5 --imbalanced-ratio 20 --unlabeled notall
+```
+
+## For Changing master_port for distributed
 ```
 python -m torch.distributed.launch --nproc_per_node 4 --master_port=25678 ./train.py --dataset cifar100 --num-labeled 10000 --arch wideresnet --batch-size 16 --lr 0.03 --wdecay 0.001 --expand-labels --seed 5 --imbalanced-ratio 100
 ```
 
-```
-python -m torch.distributed.launch --nproc_per_node 4 --master_port=25675 ./train.py --dataset cifar100 --num-labeled 10000 --arch wideresnet --batch-size 16 --lr 0.03 --wdecay 0.001 --expand-labels --seed 5 --imbalanced-ratio 100 --unlabeled notall
-```
 
 
 ### Monitoring training progress
