@@ -19,8 +19,10 @@ from tqdm import tqdm
 
 from dataset.cifar import DATASET_GETTERS
 from utils import AverageMeter, accuracy
+from utils.function import *
 
 logger = logging.getLogger(__name__)
+
 best_acc = 0
 
 
@@ -63,7 +65,6 @@ def interleave(x, size):
 def de_interleave(x, size):
     s = list(x.shape)
     return x.reshape([size, -1] + s[1:]).transpose(0, 1).reshape([-1] + s[1:])
-
 
 def main():
     parser = argparse.ArgumentParser(description='PyTorch FixMatch Training')
@@ -109,8 +110,6 @@ def main():
                         help='pseudo label temperature')
     parser.add_argument('--threshold', default=0.95, type=float,
                         help='pseudo label threshold')
-    parser.add_argument('--out', default='result',
-                        help='directory to output the result')
     parser.add_argument('--resume', default='', type=str,
                         help='path to latest checkpoint (default: none)')
     parser.add_argument('--seed', default=None, type=int,
@@ -124,9 +123,24 @@ def main():
                         help="For distributed training: local_rank")
     parser.add_argument('--no-progress', action='store_true',
                         help="don't use progress bar")
-
+    parser.add_argument('--out', default='/data/hdd3/SemisupervisedLearning/fixmatch/results/',
+                        help='directory to output the result')
+    parser.add_argument('--imbalanced-ratio',default=1,type=int)
+    parser.add_argument('--unlabeled',default='all',type=str)
+    parser.add_argument('--early-stop',default=10,type=int)
     args = parser.parse_args()
     global best_acc
+    global early_stop_count
+    early_stop_count = 0
+    args.out = args.out + f'fixmatch_{args.arch}_{args.num_labeled}_{args.unlabeled}_{args.imbalanced_ratio}_{args.seed}_early-stop_{args.early_stop}/'
+    
+    os.makedirs(args.out,exist_ok=True)
+    streamHandler = logging.StreamHandler()
+    fileHandler = logging.FileHandler(args.out+'logging.txt')
+
+    logger.addHandler(streamHandler)
+    logger.addHandler(fileHandler)
+
 
     def create_model(args):
         if args.arch == 'wideresnet':
@@ -207,7 +221,15 @@ def main():
 
     if args.local_rank == 0:
         torch.distributed.barrier()
-
+    unique_elements, counts_elements_labeled = labeled_dataset.__distribution__()
+    unique_elements, counts_elements_unlabeled = unlabeled_dataset.__distribution__()
+    # print(counts_elements_labeled)
+    # print('-'*30)
+    # print(counts_elements_unlabeled)
+    logger.info("***** Training Distribution Information *****")
+    logger.info(f"Labeled Distribution ==> \n{counts_elements_labeled}")
+    logger.info(f"Unlabeled Distribution ==> \n{counts_elements_unlabeled}")
+    # exit(1)
     train_sampler = RandomSampler if args.local_rank == -1 else DistributedSampler
 
     labeled_trainloader = DataLoader(
@@ -302,6 +324,7 @@ def train(args, labeled_trainloader, unlabeled_trainloader, test_loader,
     if args.amp:
         from apex import amp
     global best_acc
+    global early_stop_count
     test_accs = []
     end = time.time()
 
@@ -426,6 +449,11 @@ def train(args, labeled_trainloader, unlabeled_trainloader, test_loader,
             args.writer.add_scalar('test/2.test_loss', test_loss, epoch)
 
             is_best = test_acc > best_acc
+            if best_acc < test_acc:
+                early_stop_count = 0
+            else:
+                early_stop_count += 1
+
             best_acc = max(test_acc, best_acc)
 
             model_to_save = model.module if hasattr(model, "module") else model
@@ -446,10 +474,16 @@ def train(args, labeled_trainloader, unlabeled_trainloader, test_loader,
             logger.info('Best top-1 acc: {:.2f}'.format(best_acc))
             logger.info('Mean top-1 acc: {:.2f}\n'.format(
                 np.mean(test_accs[-20:])))
-
+            logger.info(f'Early-Stopping : {early_stop_count} / {args.early_stop} ...')
+        if early_stop_count >= args.early_stop:
+            logger.info('Early-Stopped')
+            break
     if args.local_rank in [-1, 0]:
         args.writer.close()
-
+    logger.handlers.clear()
+    logging.shutdown()
+    if early_stop_count >= args.early_stop:
+        return
 
 def test(args, test_loader, model, epoch):
     batch_time = AverageMeter()
